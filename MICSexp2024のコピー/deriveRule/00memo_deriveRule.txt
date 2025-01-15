@@ -1,0 +1,34 @@
+アイテムセットから相関ルールを導出するスクリプトの例
+ 長さ3のアイテムセットまでに対応
+ 課題7に触れてしまうので、ダメな実装にしてあります
+
+
+実行例
+
+$ /deriveRuleRow.pl 0.7 ../decodeItemset/lifelogSample.tab ../decodeItemset/sammpleItemset.txt 1 2 fi 
+
+$ /deriveRuleRow.pl 0.7 ../decodeItemset/lifelogSample.tab ../decodeItemset/sammpleItemset.txt 1 3 fi 
+
+
+説明
+
+$ ./deriveRuleRow.pl minconf xxx.tab yyy.txt N M tag
+
+xxx.tab
+ アイテムセットのIDと名前の対応表のファイル
+ ** 元のtabファイルをそのまま使うこと
+
+yyy.txt
+ アイテムセットのファイル
+ ** 各フィールドは 半角スペース\s または タブ\t で区切られること
+
+N
+ アイテムセットの位置
+ ** 先頭を 0 とする
+
+M
+ 支持度の位置
+ ** 先頭を 0 とする
+
+tag
+ アイテムセットの行のタグ
