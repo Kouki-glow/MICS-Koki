@@ -172,14 +172,15 @@ void countFrequency(int *tran, int tlen) {
 }
 
 /* 頻出アイテム決定処理 */
-void findFrequentItems(int minsup) {
+void findFrequentItems(int minsup, int trans) {
   printf("Frequent items (minsup = %d):\n", minsup);
   for (int i = 0; i < BUCKET_SIZE; i++) {
     struct cell *p = htab[i];
     struct cell *prev = NULL;
     while (p != NULL) {
       if (p->count >= minsup) {
-        printf("Item: %d, Count: %d\n", p->item, p->count);
+        double support = (double)p->count / trans;
+        printf("Item: %d, Count: %d, Support: %.2f\n", p->item, p->count, support);
         prev = p;
         p = p->next;
       } else {
@@ -196,6 +197,19 @@ void findFrequentItems(int minsup) {
   }
 }
 
+/*アイテムの種類数をカウント*/
+int countItems(){
+  int items = 0;
+  for (int i = 0; i < BUCKET_SIZE; i++) {
+    struct cell *p = htab[i];
+    while (p != NULL) {
+      items++;
+      p = p->next;
+    }
+  }
+  return items;
+}
+
 int main(int argc, char **argv ) { //最小指示度,ファイル名の順でコマンドライン引数により指定
 
 if( argc != 3 ){  //引数が2つであることを確認
@@ -203,18 +217,20 @@ if( argc != 3 ){  //引数が2つであることを確認
     return -1;
   }
 
-  int minsup;//最小指示度
+  double minSupRatio; // 最小指示度
+  int minsup; // 最小頻度s
   int  i;
   int  trans;  /* トランザクション数を数える変数 */
   int  tlen;   /* 1件のトランザクションの長さを保持する変数 */
   int  *tran;  /* 1件のトランザクションを保持する配列 */
+  int items;/*アイテムの種類数を保持する変数*/
   char  *tranfile;  /* トランザクションファイル名を保持する変数 */
   FILE  *fp;
   struct timeval  stime, etime;  /* 処理時間の計測に用いる変数 */
 
-/*最小指示度を取得*/
+  /* 最小指示度を取得 */
   argv++;
-  minsup = atoi( *argv );
+  minSupRatio = atof(*argv);
 
   /* ファイル名を取得 */
   argv++;
@@ -273,10 +289,10 @@ if( argc != 3 ){  //引数が2つであることを確認
     fscanf(fp, "\n");
 
     /* 読み込んだ1件のトランザクションを出力 */
-    for( i = 0; i < tlen; i++ ){
+    /*for( i = 0; i < tlen; i++ ){
       printf("%d ", tran[i]);
     }
-    printf("\n");
+    printf("\n");*/
 
     /* 頻度カウント処理 */
     countFrequency(tran, tlen);
@@ -284,8 +300,14 @@ if( argc != 3 ){  //引数が2つであることを確認
   /* ファイルを閉じる */
   fclose(fp);
 
+  /* 最小頻度を計算 */
+  minsup = (int)ceil(minSupRatio * trans);
+
+  /*アイテム数をカウント*/
+  items = countItems();
+
   /* 頻出アイテム決定処理 */
-  findFrequentItems(minsup);
+  findFrequentItems(minsup, trans);
 
   /* 終了時刻を取得し、処理時間を出力 */
   gettimeofday( &etime, NULL );
@@ -295,6 +317,9 @@ if( argc != 3 ){  //引数が2つであることを確認
   printf("---\n");
   printf("FileName: %s\n", tranfile);
   printf("Transactions: %d\n", trans);
+  printf("MinsupRatio: %f\n", minSupRatio);
+  printf("Minsup: %d\n", minsup);
+  printf("Itemscount: %d\n", items);
 
   /* ハッシュ表の領域を解放 */
   freeHashTab();

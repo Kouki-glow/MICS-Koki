@@ -22,6 +22,7 @@ void  printExecSec( struct timeval  st, struct timeval  et, char  *msg ){
 struct cell{
   int  item;     /* アイテムを保持 */
   int count;    /* 頻度を保持 */
+  double support; /* 指示度を保持 */
   struct cell *next;   /* 次のセルへのポインタ */
 };
 
@@ -179,8 +180,8 @@ void findFrequentItems(int minsup, int trans) {
     struct cell *prev = NULL;
     while (p != NULL) {
       if (p->count >= minsup) {
-        double support = (double)p->count / trans;
-        printf("Item: %d, Count: %d, Support: %.2f\n", p->item, p->count, support);
+        p->support = (double)p->count / trans;
+        printf("Item: %d, Count: %d, Support: %.2f\n", p->item, p->count, p->support);
         prev = p;
         p = p->next;
       } else {
@@ -209,13 +210,13 @@ int countItems(){
   }
   return items;
 }
-  
 
 /* 長さ2のアイテムセットを保持する構造体の定義 */
 struct pair {
   int item1;
   int item2;
   int count;
+  double support;
   struct pair *next;
 };
 
@@ -310,8 +311,8 @@ void findFrequentPairs(int minsup, int trans) {
     struct pair *prev = NULL;
     while (p != NULL) {
       if (p->count >= minsup) {
-        double support = (double)p->count / trans;
-        printf("Pair: (%d, %d), Count: %d, Support: %.2f\n", p->item1, p->item2, p->count, support);
+        p->support = (double)p->count / trans;
+        printf("Pair: (%d, %d), Count: %d, Support: %.2f\n", p->item1, p->item2, p->count, p->support);
         prev = p;
         p = p->next;
       } else {
@@ -341,15 +342,181 @@ void freePairHashTab() {
   initPairHashTab();
 }
 
-int main(int argc, char **argv ) { //最小指示度,ファイル名の順でコマンドライン引数により指定
+/* 長さ3のアイテムセットを保持する構造体の定義 */
+struct triplet {
+  int item1;
+  int item2;
+  int item3;
+  int count;
+  double support;
+  struct triplet *next;
+};
 
-if( argc != 3 ){  //引数が2つであることを確認
-    fprintf(stderr, "引数が2つではありません。最小指示度 ファイル名 を指定して下さい。\n");
+static struct triplet *triplet_htab[BUCKET_SIZE];  /* ハッシュ表: 各バケットの先頭のトリプレットへのポインタ */
+
+/* ハッシュ表の配列を初期化 (トリプレット用) */
+void initTripletHashTab() {
+  for (int i = 0; i < BUCKET_SIZE; i++) {
+    triplet_htab[i] = NULL;
+  }
+}
+
+/* ハッシュ値の計算 (トリプレット用) */
+int triplet_hash(int key1, int key2, int key3) {
+  int h = (key1 + key2 + key3) % BUCKET_SIZE;
+  if ((h < 0) || (h >= BUCKET_SIZE)) {
+    fprintf(stderr, "Error: hash value = %d, keys=%d,%d,%d\n", h, key1, key2, key3);
+    exit(1);
+  }
+  return h;
+}
+
+/* ハッシュ表の検索 (トリプレット用) */
+struct triplet *searchTripletHashTab(int key1, int key2, int key3) {
+  struct triplet *p;
+  for (p = triplet_htab[triplet_hash(key1, key2, key3)]; p != NULL; p = p->next) {
+    if (key1 == p->item1 && key2 == p->item2 && key3 == p->item3) {
+      return p;
+    }
+  }
+  return NULL;
+}
+
+/* 新たなtriplet領域を確保 */
+struct triplet *newTriplet() {
+  struct triplet *p;
+  if ((p = (struct triplet *)malloc(sizeof(struct triplet))) == NULL) {
+    fprintf(stderr, "Error: malloc\n");
+    exit(1);
+  }
+  p->item1 = -1;
+  p->item2 = -1;
+  p->item3 = -1;
+  p->count = 0;
+  p->next = NULL;
+  return p;
+}
+
+/* ハッシュ表に挿入 (トリプレット用) */
+void insertTripletHashTab(int key1, int key2, int key3) {
+  struct triplet *p = newTriplet();
+  p->item1 = key1;
+  p->item2 = key2;
+  p->item3 = key3;
+  int h = triplet_hash(key1, key2, key3);
+  p->next = triplet_htab[h];
+  triplet_htab[h] = p;
+}
+
+/* 長さ2の頻出アイテムセットから長さ3の候補アイテムセットを作成 */
+void generateCandidateTriplets() {
+  for (int i = 0; i < BUCKET_SIZE; i++) {
+    struct pair *p1 = pair_htab[i];
+    while (p1 != NULL) {
+      for (int j = i; j < BUCKET_SIZE; j++) {
+        struct pair *p2 = (j == i) ? p1->next : pair_htab[j];
+        while (p2 != NULL) {
+          if (p1->item1 == p2->item1 || p1->item1 == p2->item2 || p1->item2 == p2->item1 || p1->item2 == p2->item2) {
+            int items[3] = {p1->item1, p1->item2, (p1->item1 == p2->item1 || p1->item1 == p2->item2) ? p2->item2 : p2->item1};
+            if (items[0] != items[1] && items[0] != items[2] && items[1] != items[2]) {
+              insertTripletHashTab(items[0], items[1], items[2]);
+            }
+          }
+          p2 = p2->next;
+        }
+      }
+      p1 = p1->next;
+    }
+  }
+}
+
+/* 頻度カウント処理 (トリプレット用) */
+void countTripletFrequency(int *tran, int tlen) {
+  for (int i = 0; i < tlen; i++) {
+    for (int j = i + 1; j < tlen; j++) {
+      for (int k = j + 1; k < tlen; k++) {
+        struct triplet *p = searchTripletHashTab(tran[i], tran[j], tran[k]);
+        if (p != NULL) {
+          p->count++;
+        }
+      }
+    }
+  }
+}
+
+/* 頻出アイテム決定処理 (トリプレット用) */
+void findFrequentTriplets(int minsup, int trans) {
+  printf("Frequent triplets (minsup = %d):\n", minsup);
+  for (int i = 0; i < BUCKET_SIZE; i++) {
+    struct triplet *p = triplet_htab[i];
+    struct triplet *prev = NULL;
+    while (p != NULL) {
+      if (p->count >= minsup) {
+        p->support = (double)p->count / trans;
+        printf("Triplet: (%d, %d, %d), Count: %d, Support: %.2f\n", p->item1, p->item2, p->item3, p->count, p->support);
+        prev = p;
+        p = p->next;
+      } else {
+        struct triplet *temp = p;
+        if (prev == NULL) {
+          triplet_htab[i] = p->next;
+        } else {
+          prev->next = p->next;
+        }
+        p = p->next;
+        free(temp);
+      }
+    }
+  }
+}
+
+/* ハッシュ表の領域を解放 (トリプレット用) */
+void freeTripletHashTab() {
+  for (int i = 0; i < BUCKET_SIZE; i++) {
+    struct triplet *p = triplet_htab[i];
+    while (p != NULL) {
+      struct triplet *temp = p->next;
+      free(p);
+      p = temp;
+    }
+  }
+  initTripletHashTab();
+}
+
+/*相関ルールの導出*/
+void asociateRule(int minconf){
+  for (int i = 0; i < BUCKET_SIZE; i++) {
+    struct cell *p1 = htab[i];
+    while (p1 != NULL) {
+      for (int j = i; j < BUCKET_SIZE; j++) {
+        struct cell *p2 = htab[j];
+        while (p2 != NULL) {
+            struct cell *p2 = (j == i) ? p1->next : htab[j];
+            struct pair *r = searchPairHashTab(p1->item, p2->item);
+            if (r != NULL) {
+              double conf = r->support / p1->support;Ï
+              if (conf >= minconf) {
+                printf("Rule: %d -> %d, Count: %d, Confidence: %.2f\n", items[0], items[1], r->count, conf);
+              }
+            }
+          }
+          q = q->next;
+        }
+      }
+      p = p->next;
+    }
+  }
+
+int main(int argc, char **argv ) { //最小指示度,最小確信度,ファイル名の順でコマンドライン引数により指定
+
+if( argc != 4 ){  //引数が3つであることを確認
+    fprintf(stderr, "引数が3つではありません。最小指示度 最小確信度 ファイル名 を指定して下さい。\n");
     return -1;
   }
 
   double minSupRatio; // 最小指示度
-  int minsup; // 最小頻度s
+  int minsup; // 最小頻度
+  double minConf; // 最小確信度
   int  i;
   int  trans;  /* トランザクション数を数える変数 */
   int  tlen;   /* 1件のトランザクションの長さを保持する変数 */
@@ -362,6 +529,10 @@ if( argc != 3 ){  //引数が2つであることを確認
   /* 最小指示度を取得 */
   argv++;
   minSupRatio = atof(*argv);
+
+  /* 最小確信度を取得 */
+  argv++;
+  minConf = atof(*argv);
 
   /* ファイル名を取得 */
   argv++;
@@ -474,8 +645,42 @@ if( argc != 3 ){  //引数が2つであることを確認
   /* 頻出アイテム決定処理 (ペア用) */
   findFrequentPairs(minsup, trans);
 
-  /* ハッシュ表の領域を解放 (ペア用) */
-  freePairHashTab();
+  /* 長さ3の候補アイテムセットを作成 */
+  generateCandidateTriplets();
+
+  /* トランザクションファイルを再度開く */
+  if ((fp = fopen(tranfile, "r")) == NULL) {
+    fprintf(stderr, "Error: file(%s) open\n", tranfile);
+    return -1;
+  }
+
+  /* トランザクションファイルの1行を読み出す (パス3) */
+  while (fscanf(fp, "%d", &tlen) != EOF) {
+    if (tlen < 0) {
+      break;
+    }
+    if (tlen > sizeof(tran)) {
+      free(tran);
+      if ((tran = (int *)malloc(sizeof(int) * ((int)ceil((double)tlen / ARY_UNIT) * ARY_UNIT))) == NULL) {
+        fprintf(stderr, "Error: malloc for tran ary [%d]%d\n", trans, tlen);
+        return -1;
+      }
+    }
+    for (i = 0; i < tlen; i++) {
+      fscanf(fp, " %d", &tran[i]);
+    }
+    fscanf(fp, "\n");
+
+    /* 頻度カウント処理 (トリプレット用) */
+    countTripletFrequency(tran, tlen);
+  }
+  fclose(fp);
+
+  /* 頻出アイテム決定処理 (トリプレット用) */
+  findFrequentTriplets(minsup, trans);
+
+  /* ハッシュ表の領域を解放 (トリプレット用) */
+  freeTripletHashTab();
 
   /* 終了時刻を取得し、処理時間を出力 */
   gettimeofday( &etime, NULL );

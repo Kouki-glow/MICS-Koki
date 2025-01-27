@@ -172,14 +172,15 @@ void countFrequency(int *tran, int tlen) {
 }
 
 /* 頻出アイテム決定処理 */
-void findFrequentItems(int minsup) {
+void findFrequentItems(int minsup, int trans) {
   printf("Frequent items (minsup = %d):\n", minsup);
   for (int i = 0; i < BUCKET_SIZE; i++) {
     struct cell *p = htab[i];
     struct cell *prev = NULL;
     while (p != NULL) {
       if (p->count >= minsup) {
-        printf("Item: %d, Count: %d\n", p->item, p->count);
+        double support = (double)p->count / trans;
+        printf("Item: %d, Count: %d, Support: %.2f\n", p->item, p->count, support);
         prev = p;
         p = p->next;
       } else {
@@ -194,6 +195,19 @@ void findFrequentItems(int minsup) {
       }
     }
   }
+}
+
+/*アイテムの種類数をカウント*/
+int countItems(){
+  int items = 0;
+  for (int i = 0; i < BUCKET_SIZE; i++) {
+    struct cell *p = htab[i];
+    while (p != NULL) {
+      items++;
+      p = p->next;
+    }
+  }
+  return items;
 }
 
 /* 長さ2のアイテムセットを保持する構造体の定義 */
@@ -288,14 +302,15 @@ void countPairFrequency(int *tran, int tlen) {
 }
 
 /* 頻出アイテム決定処理 (ペア用) */
-void findFrequentPairs(int minsup) {
+void findFrequentPairs(int minsup, int trans) {
   printf("Frequent pairs (minsup = %d):\n", minsup);
   for (int i = 0; i < BUCKET_SIZE; i++) {
     struct pair *p = pair_htab[i];
     struct pair *prev = NULL;
     while (p != NULL) {
       if (p->count >= minsup) {
-        printf("Pair: (%d, %d), Count: %d\n", p->item1, p->item2, p->count);
+        double support = (double)p->count / trans;
+        printf("Pair: (%d, %d), Count: %d, Support: %.2f\n", p->item1, p->item2, p->count, support);
         prev = p;
         p = p->next;
       } else {
@@ -427,14 +442,15 @@ void countTripletFrequency(int *tran, int tlen) {
 }
 
 /* 頻出アイテム決定処理 (トリプレット用) */
-void findFrequentTriplets(int minsup) {
+void findFrequentTriplets(int minsup, int trans) {
   printf("Frequent triplets (minsup = %d):\n", minsup);
   for (int i = 0; i < BUCKET_SIZE; i++) {
     struct triplet *p = triplet_htab[i];
     struct triplet *prev = NULL;
     while (p != NULL) {
       if (p->count >= minsup) {
-        printf("Triplet: (%d, %d, %d), Count: %d\n", p->item1, p->item2, p->item3, p->count);
+        double support = (double)p->count / trans;
+        printf("Triplet: (%d, %d, %d), Count: %d, Support: %.2f\n", p->item1, p->item2, p->item3, p->count, support);
         prev = p;
         p = p->next;
       } else {
@@ -471,18 +487,20 @@ if( argc != 3 ){  //引数が2つであることを確認
     return -1;
   }
 
-  int minsup;//最小指示度
+  double minSupRatio; // 最小指示度
+  int minsup; // 最小頻度
   int  i;
   int  trans;  /* トランザクション数を数える変数 */
   int  tlen;   /* 1件のトランザクションの長さを保持する変数 */
   int  *tran;  /* 1件のトランザクションを保持する配列 */
+  int items;/*アイテムの種類数を保持する変数*/
   char  *tranfile;  /* トランザクションファイル名を保持する変数 */
   FILE  *fp;
   struct timeval  stime, etime;  /* 処理時間の計測に用いる変数 */
 
-/*最小指示度を取得*/
+  /* 最小指示度を取得 */
   argv++;
-  minsup = atoi( *argv );
+  minSupRatio = atof(*argv);
 
   /* ファイル名を取得 */
   argv++;
@@ -541,10 +559,10 @@ if( argc != 3 ){  //引数が2つであることを確認
     fscanf(fp, "\n");
 
     /* 読み込んだ1件のトランザクションを出力 */
-    for( i = 0; i < tlen; i++ ){
+    /*for( i = 0; i < tlen; i++ ){
       printf("%d ", tran[i]);
     }
-    printf("\n");
+    printf("\n");*/
 
     /* 頻度カウント処理 */
     countFrequency(tran, tlen);
@@ -552,8 +570,14 @@ if( argc != 3 ){  //引数が2つであることを確認
   /* ファイルを閉じる */
   fclose(fp);
 
+  /* 最小頻度を計算 */
+  minsup = (int)ceil(minSupRatio * trans);
+
+  /*アイテム数をカウント*/
+  items = countItems();
+
   /* 頻出アイテム決定処理 (パス1) */
-  findFrequentItems(minsup);
+  findFrequentItems(minsup, trans);
 
   /* 長さ2の候補アイテムセットを作成 */
   generateCandidatePairs();
@@ -587,7 +611,7 @@ if( argc != 3 ){  //引数が2つであることを確認
   fclose(fp);
 
   /* 頻出アイテム決定処理 (ペア用) */
-  findFrequentPairs(minsup);
+  findFrequentPairs(minsup, trans);
 
   /* 長さ3の候補アイテムセットを作成 */
   generateCandidateTriplets();
@@ -621,7 +645,7 @@ if( argc != 3 ){  //引数が2つであることを確認
   fclose(fp);
 
   /* 頻出アイテム決定処理 (トリプレット用) */
-  findFrequentTriplets(minsup);
+  findFrequentTriplets(minsup, trans);
 
   /* ハッシュ表の領域を解放 (トリプレット用) */
   freeTripletHashTab();
@@ -634,6 +658,9 @@ if( argc != 3 ){  //引数が2つであることを確認
   printf("---\n");
   printf("FileName: %s\n", tranfile);
   printf("Transactions: %d\n", trans);
+  printf("MinsupRatio: %f\n", minSupRatio);
+  printf("Minsup: %d\n", minsup);
+  printf("Itemscount: %d\n", items);
 
   /* ハッシュ表の領域を解放 */
   freeHashTab();
